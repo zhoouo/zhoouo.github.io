@@ -39,10 +39,44 @@ let isRepeat = false;
 let isLiked = false;
 let totalDuration = 120; // 預設總時長
 
+// 錯誤處理函數
+function handleError(error, context) {
+    console.error(`Error in ${context}:`, error);
+    
+    // 創建錯誤訊息元素
+    const errorMessage = document.createElement('div');
+    errorMessage.className = 'error-message';
+    errorMessage.innerHTML = `
+        <div class="error-content">
+            <i class="fas fa-exclamation-circle"></i>
+            <span>${context} 發生錯誤：${error.message}</span>
+            <button class="error-close"><i class="fas fa-times"></i></button>
+        </div>
+    `;
+    
+    // 添加到頁面
+    document.body.appendChild(errorMessage);
+    
+    // 自動移除錯誤訊息
+    setTimeout(() => {
+        errorMessage.classList.add('fade-out');
+        setTimeout(() => errorMessage.remove(), 500);
+    }, 5000);
+    
+    // 關閉按鈕事件
+    errorMessage.querySelector('.error-close').addEventListener('click', () => {
+        errorMessage.classList.add('fade-out');
+        setTimeout(() => errorMessage.remove(), 500);
+    });
+}
+
 // 初始化歌詞
 async function initLyrics() {
     try {
         const response = await fetch('lyrics.json');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const data = await response.json();
         
         // 更新歌曲信息
@@ -68,35 +102,82 @@ async function initLyrics() {
             lyricsContainer.appendChild(lyricLine);
         });
     } catch (error) {
-        console.error('Error loading lyrics:', error);
+        handleError(error, '載入歌詞');
     }
 }
 
 // 初始化音頻上下文
 async function initAudio() {
     try {
+        // 檢查瀏覽器是否支援 Web Audio API
+        if (!window.AudioContext && !window.webkitAudioContext) {
+            throw new Error('您的瀏覽器不支援 Web Audio API');
+        }
+
+        // 檢查是否支援音頻播放
+        if (!window.Audio) {
+            throw new Error('您的瀏覽器不支援音頻播放');
+        }
+
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // 檢查音頻上下文狀態
+        if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
+        
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
         
         // 創建音頻元素
-        const audioElement = new Audio('lemon.mp3');
+        const audioElement = new Audio('./lemon.mp3');
+        
+        // 添加錯誤處理
+        audioElement.addEventListener('error', (e) => {
+            let errorMessage = '音頻載入失敗';
+            switch (e.target.error.code) {
+                case MediaError.MEDIA_ERR_ABORTED:
+                    errorMessage = '音頻載入被中止';
+                    break;
+                case MediaError.MEDIA_ERR_NETWORK:
+                    errorMessage = '網路錯誤導致音頻載入失敗';
+                    break;
+                case MediaError.MEDIA_ERR_DECODE:
+                    errorMessage = '音頻格式不支援或檔案損壞';
+                    break;
+                case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                    errorMessage = '不支援的音頻格式';
+                    break;
+            }
+            handleError(new Error(errorMessage), '音頻載入');
+        });
+
         // 設置音頻播放權限
         audioElement.muted = false;
         audioElement.playsInline = true;
         
         // 設置默認音量
-        audioElement.volume = 0.5; // 默認音量設為 50%
+        audioElement.volume = 0.5;
         
         // 設置音量條初始位置
         const volumeLevel = document.getElementById('volumeLevel');
-        volumeLevel.style.width = '50%';
+        if (volumeLevel) {
+            volumeLevel.style.width = '50%';
+        }
         
-        audioSource = audioContext.createMediaElementSource(audioElement);
-        
-        // 連接音頻節點
-        audioSource.connect(analyser);
-        analyser.connect(audioContext.destination);
+        try {
+            audioSource = audioContext.createMediaElementSource(audioElement);
+            
+            // 連接音頻節點
+            audioSource.connect(analyser);
+            analyser.connect(audioContext.destination);
+        } catch (error) {
+            if (error.name === 'InvalidStateError') {
+                handleError(new Error('音頻節點已經被連接到其他音頻上下文'), '音頻初始化');
+            } else {
+                throw error;
+            }
+        }
         
         // 設置初始進度條位置
         currentTime = 0;
@@ -104,13 +185,15 @@ async function initAudio() {
         
         // 創建音頻可視化條
         const visualizer = document.getElementById('visualizer');
-        visualizer.innerHTML = ''; // 清空現有內容
-        const barCount = 32; // 可視化條的數量
-        
-        for (let i = 0; i < barCount; i++) {
-            const bar = document.createElement('div');
-            bar.className = 'bar';
-            visualizer.appendChild(bar);
+        if (visualizer) {
+            visualizer.innerHTML = '';
+            const barCount = 32;
+            
+            for (let i = 0; i < barCount; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                visualizer.appendChild(bar);
+            }
         }
         
         // 設置音頻事件
@@ -123,18 +206,18 @@ async function initAudio() {
         // 設置音頻結束事件
         audioElement.addEventListener('ended', () => {
             if (isLoop) {
-                // 如果是循環模式，重新開始播放
                 audioElement.currentTime = 0;
-                audioElement.play();
-                // 確保播放按鈕顯示為暫停狀態
+                audioElement.play().catch(error => {
+                    handleError(error, '循環播放');
+                });
                 playIcon.classList.remove('fa-play');
                 playIcon.classList.add('fa-pause');
                 isPlaying = true;
             } else if (isRepeat) {
-                // 如果是重複模式，重新開始播放
                 audioElement.currentTime = 0;
-                audioElement.play();
-                // 確保播放按鈕顯示為暫停狀態
+                audioElement.play().catch(error => {
+                    handleError(error, '重複播放');
+                });
                 playIcon.classList.remove('fa-play');
                 playIcon.classList.add('fa-pause');
                 isPlaying = true;
@@ -148,8 +231,11 @@ async function initAudio() {
             totalDuration = audioElement.duration;
             const totalMinutes = Math.floor(totalDuration / 60);
             const totalSeconds = Math.floor(totalDuration % 60);
-            document.getElementById('totalTime').textContent = 
-                `${totalMinutes}:${totalSeconds < 10 ? '0' + totalSeconds : totalSeconds}`;
+            const totalTimeDisplay = document.getElementById('totalTime');
+            if (totalTimeDisplay) {
+                totalTimeDisplay.textContent = 
+                    `${totalMinutes}:${totalSeconds < 10 ? '0' + totalSeconds : totalSeconds}`;
+            }
         });
         
         // 保存音頻元素引用
@@ -158,7 +244,7 @@ async function initAudio() {
         // 開始更新可視化
         updateVisualizer();
     } catch (error) {
-        console.error('Error initializing audio:', error);
+        handleError(error, '初始化音頻');
     }
 }
 
@@ -398,7 +484,7 @@ lyricsContainer.addEventListener('click', (e) => {
         // 如果正在播放，確保音頻繼續播放
         if (isPlaying) {
             window.audioElement.play().catch(error => {
-                console.error('Error playing audio:', error);
+                handleError(error, '點擊歌詞播放');
             });
         }
         
