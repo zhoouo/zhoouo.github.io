@@ -109,74 +109,66 @@ async function initLyrics() {
 // 初始化音頻上下文
 async function initAudio() {
     try {
-        // 檢查瀏覽器是否支援 Web Audio API
-        if (!window.AudioContext && !window.webkitAudioContext) {
-            throw new Error('您的瀏覽器不支援 Web Audio API');
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
-
-        // 檢查是否支援音頻播放
-        if (!window.Audio) {
-            throw new Error('您的瀏覽器不支援音頻播放');
-        }
-
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
         // 檢查音頻上下文狀態
         if (audioContext.state === 'suspended') {
             await audioContext.resume();
         }
         
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
+        if (!analyser) {
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+        }
         
         // 創建音頻元素
-        const audioElement = new Audio('./lemon.mp3');
-        
-        // 添加錯誤處理
-        audioElement.addEventListener('error', (e) => {
-            let errorMessage = '音頻載入失敗';
-            switch (e.target.error.code) {
-                case MediaError.MEDIA_ERR_ABORTED:
-                    errorMessage = '音頻載入被中止';
-                    break;
-                case MediaError.MEDIA_ERR_NETWORK:
-                    errorMessage = '網路錯誤導致音頻載入失敗';
-                    break;
-                case MediaError.MEDIA_ERR_DECODE:
-                    errorMessage = '音頻格式不支援或檔案損壞';
-                    break;
-                case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-                    errorMessage = '不支援的音頻格式';
-                    break;
-            }
-            handleError(new Error(errorMessage), '音頻載入');
-        });
+        if (!window.audioElement) {
+            window.audioElement = new Audio('./lemon.mp3');
+            
+            // 添加錯誤處理
+            window.audioElement.addEventListener('error', (e) => {
+                let errorMessage = '音頻載入失敗';
+                switch (e.target.error.code) {
+                    case MediaError.MEDIA_ERR_ABORTED:
+                        errorMessage = '音頻載入被中止';
+                        break;
+                    case MediaError.MEDIA_ERR_NETWORK:
+                        errorMessage = '網路錯誤導致音頻載入失敗';
+                        break;
+                    case MediaError.MEDIA_ERR_DECODE:
+                        errorMessage = '音頻格式不支援或檔案損壞';
+                        break;
+                    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                        errorMessage = '不支援的音頻格式';
+                        break;
+                }
+                handleError(new Error(errorMessage), '音頻載入');
+            });
 
-        // 設置音頻播放權限
-        audioElement.muted = false;
-        audioElement.playsInline = true;
-        
-        // 設置默認音量
-        audioElement.volume = 0.5;
+            // 設置音頻播放權限
+            window.audioElement.muted = false;
+            window.audioElement.playsInline = true;
+            window.audioElement.volume = 0.5;
+            
+            try {
+                audioSource = audioContext.createMediaElementSource(window.audioElement);
+                audioSource.connect(analyser);
+                analyser.connect(audioContext.destination);
+            } catch (error) {
+                if (error.name === 'InvalidStateError') {
+                    handleError(new Error('音頻節點已經被連接到其他音頻上下文'), '音頻初始化');
+                } else {
+                    throw error;
+                }
+            }
+        }
         
         // 設置音量條初始位置
         const volumeLevel = document.getElementById('volumeLevel');
         if (volumeLevel) {
             volumeLevel.style.width = '50%';
-        }
-        
-        try {
-            audioSource = audioContext.createMediaElementSource(audioElement);
-            
-            // 連接音頻節點
-            audioSource.connect(analyser);
-            analyser.connect(audioContext.destination);
-        } catch (error) {
-            if (error.name === 'InvalidStateError') {
-                handleError(new Error('音頻節點已經被連接到其他音頻上下文'), '音頻初始化');
-            } else {
-                throw error;
-            }
         }
         
         // 設置初始進度條位置
@@ -197,25 +189,25 @@ async function initAudio() {
         }
         
         // 設置音頻事件
-        audioElement.addEventListener('timeupdate', () => {
-            currentTime = audioElement.currentTime;
+        window.audioElement.addEventListener('timeupdate', () => {
+            currentTime = window.audioElement.currentTime;
             updateProgressBar();
             highlightCurrentLyric();
         });
         
         // 設置音頻結束事件
-        audioElement.addEventListener('ended', () => {
+        window.audioElement.addEventListener('ended', () => {
             if (isLoop) {
-                audioElement.currentTime = 0;
-                audioElement.play().catch(error => {
+                window.audioElement.currentTime = 0;
+                window.audioElement.play().catch(error => {
                     handleError(error, '循環播放');
                 });
                 playIcon.classList.remove('fa-play');
                 playIcon.classList.add('fa-pause');
                 isPlaying = true;
             } else if (isRepeat) {
-                audioElement.currentTime = 0;
-                audioElement.play().catch(error => {
+                window.audioElement.currentTime = 0;
+                window.audioElement.play().catch(error => {
                     handleError(error, '重複播放');
                 });
                 playIcon.classList.remove('fa-play');
@@ -227,8 +219,8 @@ async function initAudio() {
         });
         
         // 更新總時長
-        audioElement.addEventListener('loadedmetadata', () => {
-            totalDuration = audioElement.duration;
+        window.audioElement.addEventListener('loadedmetadata', () => {
+            totalDuration = window.audioElement.duration;
             const totalMinutes = Math.floor(totalDuration / 60);
             const totalSeconds = Math.floor(totalDuration % 60);
             const totalTimeDisplay = document.getElementById('totalTime');
@@ -237,9 +229,6 @@ async function initAudio() {
                     `${totalMinutes}:${totalSeconds < 10 ? '0' + totalSeconds : totalSeconds}`;
             }
         });
-        
-        // 保存音頻元素引用
-        window.audioElement = audioElement;
         
         // 開始更新可視化
         updateVisualizer();
@@ -272,23 +261,27 @@ const playIcon = document.getElementById('playIcon');
 
 playButton.addEventListener('click', togglePlayback);
 
-function togglePlayback() {
-    if (!audioContext) {
-        initAudio();
-    }
-    
-    isPlaying = !isPlaying;
-    
-    if (isPlaying) {
-        playIcon.classList.remove('fa-play');
-        playIcon.classList.add('fa-pause');
-        window.audioElement.play();
-        startPlayback();
-    } else {
-        playIcon.classList.remove('fa-pause');
-        playIcon.classList.add('fa-play');
-        window.audioElement.pause();
-        stopPlayback();
+async function togglePlayback() {
+    try {
+        if (!audioContext || !window.audioElement) {
+            await initAudio();
+        }
+        
+        isPlaying = !isPlaying;
+        
+        if (isPlaying) {
+            playIcon.classList.remove('fa-play');
+            playIcon.classList.add('fa-pause');
+            await window.audioElement.play();
+            startPlayback();
+        } else {
+            playIcon.classList.remove('fa-pause');
+            playIcon.classList.add('fa-play');
+            window.audioElement.pause();
+            stopPlayback();
+        }
+    } catch (error) {
+        handleError(error, '切換播放狀態');
     }
 }
 
