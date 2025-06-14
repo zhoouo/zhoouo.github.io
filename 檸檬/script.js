@@ -38,6 +38,9 @@ let isLoop = false;  // 改為循環狀態
 let isRepeat = false;
 let isLiked = false;
 let totalDuration = 120; // 預設總時長
+// 添加手動滾動控制變數
+let isUserScrolling = false;
+let userScrollTimeout;
 
 // 錯誤處理函數
 function handleError(error, context) {
@@ -70,6 +73,7 @@ function handleError(error, context) {
     });
 }
 
+
 // 初始化歌詞
 async function initLyrics() {
     try {
@@ -101,10 +105,87 @@ async function initLyrics() {
             lyricLine.textContent = lyric.text;
             lyricsContainer.appendChild(lyricLine);
         });
+
+        // 添加滾動事件監聽
+        lyricsContainer.addEventListener('wheel', (e) => {
+            isUserScrolling = true;
+            clearTimeout(userScrollTimeout);
+            userScrollTimeout = setTimeout(() => {
+                isUserScrolling = false;
+            }, 1500);
+        });
+
+        lyricsContainer.addEventListener('touchstart', () => {
+            isUserScrolling = true;
+            clearTimeout(userScrollTimeout);
+        });
+
+        lyricsContainer.addEventListener('touchmove', () => {
+            isUserScrolling = true;
+            clearTimeout(userScrollTimeout);
+        });
+
+        lyricsContainer.addEventListener('touchend', () => {
+            userScrollTimeout = setTimeout(() => {
+                isUserScrolling = false;
+            }, 1500);
+        });
     } catch (error) {
         handleError(error, '載入歌詞');
     }
 }
+// 修改高亮當前歌詞的函數
+function highlightCurrentLyric() {
+    // 如果使用者正在滑動，不進行定位
+    if (isUserScrolling) return;
+
+    const lyricsContainer = document.getElementById('lyricsContainer');
+    const lyricLines = document.querySelectorAll('.lyric-line');
+    let currentActive = null;
+    
+    // 找到當前應高亮的歌詞
+    for (let i = 0; i < lyricLines.length; i++) {
+        const lineTime = parseFloat(lyricLines[i].dataset.time);
+        const lineText = lyricLines[i].textContent;
+   
+        // 跳過間奏
+        if (lineText === "--") continue;
+        
+        // 如果當前時間大於歌詞時間點，且不是最後一句
+        if (currentTime >= lineTime) {
+            if (i === lyricLines.length - 1 || currentTime < parseFloat(lyricLines[i+1].dataset.time)) {
+                currentActive = i;
+                break;
+            }
+        }
+    }
+    
+    // 更新歌詞高亮
+    lyricLines.forEach((line, index) => {
+        if (index === currentActive && line.textContent !== "間奏") {
+            line.classList.add('active');
+            
+            // 只有在非使用者滑動時才進行滾動
+            if (!isUserScrolling) {
+                // 計算滾動位置
+                const containerHeight = lyricsContainer.clientHeight;
+                const lineTop = line.offsetTop;
+                const lineHeight = line.clientHeight;
+                const scrollPosition = lineTop - (containerHeight / 2) + (lineHeight / 2);
+                
+                // 使用 scrollTo 而不是 scrollIntoView，這樣只會滾動歌詞容器
+                lyricsContainer.scrollTo({
+                    top: scrollPosition,
+                    behavior: 'smooth'
+                });
+            }
+        } else {
+            line.classList.remove('active');
+        }
+    });
+}
+
+
 
 // 初始化音頻上下文
 async function initAudio() {
@@ -358,60 +439,6 @@ function updateProgressBar() {
     totalTimeDisplay.textContent = `${totalMinutes}:${totalSeconds.toString().padStart(2, '0')}`;
 }
 
-// 高亮當前歌詞
-function highlightCurrentLyric() {
-    const lyricLines = document.querySelectorAll('.lyric-line');
-    let currentActive = null;
-    
-    // 找到當前應高亮的歌詞
-    for (let i = 0; i < lyricLines.length; i++) {
-        const lineTime = parseFloat(lyricLines[i].dataset.time);
-        const lineText = lyricLines[i].textContent;
-        
-        // 跳過間奏
-        if (lineText === "--") continue;
-        
-        // 如果當前時間大於歌詞時間點，且不是最後一句
-        if (currentTime >= lineTime) {
-            if (i === lyricLines.length - 1 || currentTime < parseFloat(lyricLines[i+1].dataset.time)) {
-                currentActive = i;
-                break;
-            }
-        }
-    }
-    
-    // 更新歌詞高亮
-    lyricLines.forEach((line, index) => {
-        if (index === currentActive && line.textContent !== "間奏") {
-            line.classList.add('active');
-            
-            // 滾動到當前歌詞
-            line.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-            });
-        } else {
-            line.classList.remove('active');
-        }
-    });
-}
-
-// 進度條點擊事件
-const progressContainer = document.getElementById('progressContainer');
-
-progressContainer.addEventListener('click', (e) => {
-    if (!window.audioElement) return;
-    
-    const rect = progressContainer.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    const newTime = percent * totalDuration;
-    
-    window.audioElement.currentTime = newTime;
-    currentTime = newTime;
-    updateProgressBar();
-    highlightCurrentLyric();
-});
-
 // 音量控制
 const volumeBar = document.getElementById('volumeBar');
 const volumeLevel = document.getElementById('volumeLevel');
@@ -486,8 +513,86 @@ lyricsContainer.addEventListener('click', (e) => {
     }
 });
 
+// 進度條拖曳功能
+const progressContainer = document.getElementById('progressContainer');
+
+progressContainer.addEventListener('click', (e) => {
+    if (!window.audioElement) return;
+    
+    const rect = progressContainer.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const barWidth = rect.width;
+    const newTime = (offsetX / barWidth) * totalDuration;
+    
+    // 更新音頻時間
+    window.audioElement.currentTime = newTime;
+    currentTime = newTime;
+    updateProgressBar();
+    highlightCurrentLyric();
+});
+
+// 添加拖曳功能
+let isDragging = false;
+
+progressContainer.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    handleProgressDrag(e);
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+        handleProgressDrag(e);
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    isDragging = false;
+});
+
+// 處理拖曳事件
+function handleProgressDrag(e) {
+    if (!window.audioElement) return;
+    
+    const rect = progressContainer.getBoundingClientRect();
+    const offsetX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const barWidth = rect.width;
+    const newTime = (offsetX / barWidth) * totalDuration;
+    
+    // 更新音頻時間
+    window.audioElement.currentTime = newTime;
+    currentTime = newTime;
+    updateProgressBar();
+    highlightCurrentLyric();
+}
+
 // 初始化
 initLyrics();
 initAudio();
 highlightCurrentLyric();
 updateVisualizer(); 
+
+
+
+// 版本紀錄功能
+document.addEventListener('DOMContentLoaded', function() {
+    const versionBtn = document.getElementById('versionBtn');
+    const versionModal = document.getElementById('versionModal');
+    const closeBtn = document.querySelector('.close-btn');
+
+    // 點擊版本按鈕顯示彈出視窗
+    versionBtn.addEventListener('click', function() {
+        versionModal.style.display = 'block';
+    });
+
+    // 點擊關閉按鈕隱藏彈出視窗
+    closeBtn.addEventListener('click', function() {
+        versionModal.style.display = 'none';
+    });
+
+    // 點擊彈出視窗外部區域隱藏彈出視窗
+    window.addEventListener('click', function(event) {
+        if (event.target === versionModal) {
+            versionModal.style.display = 'none';
+        }
+    });
+}); 
