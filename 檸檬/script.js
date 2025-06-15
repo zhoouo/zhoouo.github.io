@@ -1,11 +1,50 @@
 // 初始化粒子背景
 particlesJS("particles-js", {
     particles: {
-        number: { value: 80, density: { enable: true, value_area: 800 } },
-        color: { value: "#1DB954" },
-        shape: { type: "circle" },
-        opacity: { value: 0.2, random: true },
-        size: { value: 3, random: true },
+        number: { 
+            value: 50,
+            density: { 
+                enable: true, 
+                value_area: 1000 
+            }
+        },
+        color: { 
+            value: ["#FFD700", "#1DB954", "#ffffff"]
+        },
+        shape: { 
+            type: "circle",
+            stroke: {
+                width: 0,
+                color: "#000000"
+            }
+        },
+        opacity: {
+            value: 0.3,
+            random: true,
+            anim: {
+                enable: true,
+                speed: 1,
+                opacity_min: 0.1,
+                sync: false
+            }
+        },
+        size: {
+            value: 2,
+            random: true,
+            anim: {
+                enable: true,
+                speed: 2,
+                size_min: 0.1,
+                sync: false
+            }
+        },
+        line_linked: {
+            enable: true,
+            distance: 150,
+            color: "#FFD700",
+            opacity: 0.2,
+            width: 1
+        },
         move: {
             enable: true,
             speed: 1,
@@ -13,17 +52,40 @@ particlesJS("particles-js", {
             random: true,
             straight: false,
             out_mode: "out",
-            bounce: false
+            bounce: false,
+            attract: {
+                enable: true,
+                rotateX: 600,
+                rotateY: 1200
+            }
         }
     },
     interactivity: {
         detect_on: "canvas",
         events: {
-            onhover: { enable: true, mode: "repulse" },
-            onclick: { enable: true, mode: "push" },
+            onhover: {
+                enable: true,
+                mode: "grab"
+            },
+            onclick: {
+                enable: true,
+                mode: "push"
+            },
             resize: true
+        },
+        modes: {
+            grab: {
+                distance: 140,
+                line_linked: {
+                    opacity: 0.5
+                }
+            },
+            push: {
+                particles_nb: 4
+            }
         }
-    }
+    },
+    retina_detect: true
 });
 
 // 音頻上下文和分析器
@@ -41,6 +103,37 @@ let totalDuration = 120; // 預設總時長
 // 添加手動滾動控制變數
 let isUserScrolling = false;
 let userScrollTimeout;
+
+// 載入狀態控制
+function showLoading(message = '載入中...') {
+    let overlay = document.querySelector('.loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'loading-overlay';
+        overlay.innerHTML = `
+            <div class="loading-spinner"></div>
+            <div class="loading-text">${message}</div>
+        `;
+        document.body.appendChild(overlay);
+    }
+    overlay.classList.add('active');
+}
+
+function hideLoading() {
+    const overlay = document.querySelector('.loading-overlay');
+    if (overlay) {
+        // 生成 0.5 到 1.5 秒的隨機時間
+        const randomTime = Math.random() * 1000 + 500; // 500ms 到 1500ms
+        setTimeout(() => {
+            overlay.classList.remove('active');
+            setTimeout(() => {
+                if (!overlay.classList.contains('active')) {
+                    overlay.remove();
+                }
+            }, 150);
+        }, randomTime);
+    }
+}
 
 // 錯誤處理函數
 function handleError(error, context) {
@@ -73,10 +166,10 @@ function handleError(error, context) {
     });
 }
 
-
 // 初始化歌詞
 async function initLyrics() {
     try {
+        showLoading('載入歌詞中...');
         const response = await fetch('lyrics.json');
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -130,66 +223,65 @@ async function initLyrics() {
                 isUserScrolling = false;
             }, 1500);
         });
+
+        hideLoading();
     } catch (error) {
+        hideLoading();
         handleError(error, '載入歌詞');
     }
 }
+
 // 修改高亮當前歌詞的函數
 function highlightCurrentLyric() {
-    // 如果使用者正在滑動，不進行定位
     if (isUserScrolling) return;
 
     const lyricsContainer = document.getElementById('lyricsContainer');
     const lyricLines = document.querySelectorAll('.lyric-line');
     let currentActive = null;
     
-    // 找到當前應高亮的歌詞
-    for (let i = 0; i < lyricLines.length; i++) {
-        const lineTime = parseFloat(lyricLines[i].dataset.time);
-        const lineText = lyricLines[i].textContent;
-   
-        // 跳過間奏
-        if (lineText === "--") continue;
-        
-        // 如果當前時間大於歌詞時間點，且不是最後一句
-        if (currentTime >= lineTime) {
-            if (i === lyricLines.length - 1 || currentTime < parseFloat(lyricLines[i+1].dataset.time)) {
-                currentActive = i;
-                break;
-            }
-        }
-    }
-    
-    // 更新歌詞高亮
-    lyricLines.forEach((line, index) => {
-        if (index === currentActive && line.textContent !== "間奏") {
-            line.classList.add('active');
+    // 使用 requestAnimationFrame 來優化滾動性能
+    requestAnimationFrame(() => {
+        for (let i = 0; i < lyricLines.length; i++) {
+            const lineTime = parseFloat(lyricLines[i].dataset.time);
+            const lineText = lyricLines[i].textContent;
+       
+            if (lineText === "--") continue;
             
-            // 只有在非使用者滑動時才進行滾動
-            if (!isUserScrolling) {
-                // 計算滾動位置
-                const containerHeight = lyricsContainer.clientHeight;
-                const lineTop = line.offsetTop;
-                const lineHeight = line.clientHeight;
-                const scrollPosition = lineTop - (containerHeight / 2) + (lineHeight / 2);
-                
-                // 使用 scrollTo 而不是 scrollIntoView，這樣只會滾動歌詞容器
-                lyricsContainer.scrollTo({
-                    top: scrollPosition,
-                    behavior: 'smooth'
-                });
+            if (currentTime >= lineTime) {
+                if (i === lyricLines.length - 1 || currentTime < parseFloat(lyricLines[i+1].dataset.time)) {
+                    currentActive = i;
+                    break;
+                }
             }
-        } else {
-            line.classList.remove('active');
         }
+        
+        lyricLines.forEach((line, index) => {
+            if (index === currentActive && line.textContent !== "間奏") {
+                line.classList.add('active');
+                
+                if (!isUserScrolling) {
+                    const containerHeight = lyricsContainer.clientHeight;
+                    const lineTop = line.offsetTop;
+                    const lineHeight = line.clientHeight;
+                    const scrollPosition = lineTop - (containerHeight / 2) + (lineHeight / 2);
+                    
+                    // 恢復平滑滾動效果
+                    lyricsContainer.scrollTo({
+                        top: scrollPosition,
+                        behavior: 'smooth'
+                    });
+                }
+            } else {
+                line.classList.remove('active');
+            }
+        });
     });
 }
-
-
 
 // 初始化音頻上下文
 async function initAudio() {
     try {
+        showLoading('初始化音頻...');
         if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
@@ -201,7 +293,9 @@ async function initAudio() {
         
         if (!analyser) {
             analyser = audioContext.createAnalyser();
+            // 增加頻率分析器的精度
             analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.8;
         }
         
         // 創建音頻元素
@@ -313,8 +407,11 @@ async function initAudio() {
         
         // 開始更新可視化
         updateVisualizer();
+
+        hideLoading();
     } catch (error) {
-        handleError(error, '初始化音頻');
+        hideLoading();
+        handleError(error, '音頻初始化');
     }
 }
 
@@ -326,13 +423,36 @@ function updateVisualizer() {
     analyser.getByteFrequencyData(dataArray);
     
     const bars = document.querySelectorAll('.bar');
+    const barCount = bars.length;
+    
+    // 使用 requestAnimationFrame 的時間戳來創建平滑的動畫
+    const now = performance.now();
+    
     bars.forEach((bar, index) => {
+        // 使用正弦函數來創建更自然的波動效果
+        const waveOffset = Math.sin(now * 0.001 + index * 0.1) * 5;
+        
+        // 獲取頻率數據並應用平滑過渡
         const value = dataArray[index];
-        const height = (value / 255) * 100;
-        bar.style.height = `${height}%`;
+        const height = Math.max(5, (value / 255) * 100 + waveOffset);
+        
+        // 應用平滑過渡
+        const currentHeight = parseFloat(bar.style.height) || 0;
+        const newHeight = currentHeight + (height - currentHeight) * 0.3;
+        
+        bar.style.height = `${newHeight}%`;
+        
+        // 根據頻率強度調整顏色
+        const hue = (value / 255) * 60 + 120; // 從綠色到黃色的漸變
+        const saturation = 70 + (value / 255) * 30; // 70% 到 100% 的飽和度
+        const lightness = 50 + (value / 255) * 10; // 50% 到 60% 的亮度
+        
+        bar.style.background = `linear-gradient(to top, 
+            hsl(${hue}, ${saturation}%, ${lightness}%), 
+            hsl(${hue + 20}, ${saturation}%, ${lightness + 10}%)
+        )`;
     });
     
-    // 持續更新可視化，不受播放狀態影響
     requestAnimationFrame(updateVisualizer);
 }
 
@@ -565,13 +685,92 @@ function handleProgressDrag(e) {
     highlightCurrentLyric();
 }
 
+// 鍵盤快捷鍵控制
+function initKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // 如果正在輸入文字，不觸發快捷鍵
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            return;
+        }
+
+        switch (e.code) {
+            case 'Space':
+                e.preventDefault(); // 防止頁面滾動
+                togglePlayback();
+                break;
+            
+            case 'ArrowLeft':
+                e.preventDefault();
+                if (window.audioElement) {
+                    const newTime = Math.max(0, window.audioElement.currentTime - 5);
+                    window.audioElement.currentTime = newTime;
+                    currentTime = newTime;
+                    updateProgressBar();
+                }
+                break;
+            
+            case 'ArrowRight':
+                e.preventDefault();
+                if (window.audioElement) {
+                    const newTime = Math.min(totalDuration, window.audioElement.currentTime + 5);
+                    window.audioElement.currentTime = newTime;
+                    currentTime = newTime;
+                    updateProgressBar();
+                }
+                break;
+            
+            case 'ArrowUp':
+                e.preventDefault();
+                if (window.audioElement) {
+                    const newVolume = Math.min(1, window.audioElement.volume + 0.1);
+                    window.audioElement.volume = newVolume;
+                    const volumeLevel = document.getElementById('volumeLevel');
+                    if (volumeLevel) {
+                        volumeLevel.style.width = `${newVolume * 100}%`;
+                    }
+                }
+                break;
+            
+            case 'ArrowDown':
+                e.preventDefault();
+                if (window.audioElement) {
+                    const newVolume = Math.max(0, window.audioElement.volume - 0.1);
+                    window.audioElement.volume = newVolume;
+                    const volumeLevel = document.getElementById('volumeLevel');
+                    if (volumeLevel) {
+                        volumeLevel.style.width = `${newVolume * 100}%`;
+                    }
+                }
+                break;
+            
+            case 'Escape':
+                // 關閉版本紀錄彈出視窗
+                const versionModal = document.getElementById('versionModal');
+                if (versionModal && versionModal.style.display === 'block') {
+                    versionModal.style.display = 'none';
+                }
+                break;
+            
+            case 'KeyM':
+                // 靜音/取消靜音
+                if (window.audioElement) {
+                    window.audioElement.muted = !window.audioElement.muted;
+                    const volumeIcon = document.querySelector('.volume-container i');
+                    if (volumeIcon) {
+                        volumeIcon.className = window.audioElement.muted ? 
+                            'fas fa-volume-mute' : 'fas fa-volume-up';
+                    }
+                }
+                break;
+        }
+    });
+}
+
 // 初始化
 initLyrics();
 initAudio();
 highlightCurrentLyric();
 updateVisualizer(); 
-
-
 
 // 版本紀錄功能
 document.addEventListener('DOMContentLoaded', function() {
@@ -595,4 +794,10 @@ document.addEventListener('DOMContentLoaded', function() {
             versionModal.style.display = 'none';
         }
     });
+}); 
+
+// 在初始化時添加快捷鍵支持
+document.addEventListener('DOMContentLoaded', () => {
+    initKeyboardShortcuts();
+    // ... 其他初始化代碼 ...
 }); 
