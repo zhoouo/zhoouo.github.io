@@ -57,15 +57,27 @@ class PipController {
     }
 
     try {
-      // Stop any existing stream first
-      await this.stop();
+      // Exit PiP if already active (without stopping stream yet)
+      if (document.pictureInPictureElement === this.video) {
+        await document.exitPictureInPicture();
+      }
+
+      // Stop existing tracks if any
+      if (this.video.srcObject) {
+        const tracks = this.video.srcObject.getTracks();
+        tracks.forEach(track => track.stop());
+        this.video.srcObject = null;
+      }
 
       // Capture canvas stream at 1 frame per second (enough for static text overlay)
       this.stream = canvas.captureStream(1);
       this.video.srcObject = this.stream;
 
-      // Play the video stream
-      await this.video.play();
+      // Play the video stream with proper promise handling
+      const playPromise = this.video.play();
+      if (playPromise !== undefined) {
+        await playPromise;
+      }
       
       // Request PiP window
       await this.video.requestPictureInPicture();
