@@ -1,0 +1,24 @@
+{
+  "short_name": "數獨人",
+  "name": "數獨人",
+  "icons": [
+    {
+      "src": "assets/icons/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#121214",
+  "theme_color": "#F7D13C",
+  "display": "standalone",
+  "orientation": "portrait",
+  "prefer_related_applications": false
+}

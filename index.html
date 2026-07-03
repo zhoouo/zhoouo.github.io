@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>數獨人</title>
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#F7D13C" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="數獨人" />
+    <link rel="apple-touch-icon" href="assets/icons/icon.svg" />
+    <link rel="manifest" href="manifest.json" />
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="css/style.css" />
+
+    <!-- Scripts -->
+    <script src="js/solver.js" defer></script>
+    <script src="js/image-processor.js" defer></script>
+    <script src="js/decision-engine.js" defer></script>
+    <script src="js/pip.js" defer></script>
+    <script src="js/app.js" defer></script>
+  </head>
+  <body>
+    <!-- App Header -->
+    <header>
+      <div class="logo">
+        <svg viewBox="0 0 512 512" width="32" height="32">
+          <rect width="512" height="512" rx="112" fill="#1E1E24" />
+          <rect
+            x="96"
+            y="96"
+            width="320"
+            height="320"
+            rx="16"
+            fill="none"
+            stroke="#F7D13C"
+            stroke-width="24"
+          />
+          <line
+            x1="202.6"
+            y1="96"
+            x2="202.6"
+            y2="416"
+            stroke="#F7D13C"
+            stroke-width="12"
+          />
+          <line
+            x1="309.3"
+            y1="96"
+            x2="309.3"
+            y2="416"
+            stroke="#F7D13C"
+            stroke-width="12"
+          />
+          <line
+            x1="96"
+            y1="202.6"
+            x2="416"
+            y2="202.6"
+            stroke="#F7D13C"
+            stroke-width="12"
+          />
+          <line
+            x1="96"
+            y1="309.3"
+            x2="416"
+            y2="309.3"
+            stroke="#F7D13C"
+            stroke-width="12"
+          />
+        </svg>
+        <h1>數獨人</h1>
+      </div>
+      <span class="badge">Local Web PWA</span>
+    </header>
+
+    <!-- Main Panel -->
+    <main>
+      <!-- Status Dashboard -->
+      <div class="glass-card status-bar">
+        <div class="status-item">
+          <span id="errorStatus">剩餘試錯: 3次</span>
+        </div>
+        <div class="status-item">
+          <span id="hintStatus">提示: 2次</span>
+        </div>
+        <div class="status-item">
+          <div class="status-dot"></div>
+          <span id="solutionStatus">等待分析</span>
+        </div>
+      </div>
+
+      <!-- Image Viewport & Canvas -->
+      <div class="viewport-container">
+        <canvas id="srcCanvas"></canvas>
+
+        <!-- Interactive Grid Button Overlay (Aligned to Detected Board) -->
+        <div id="gridOverlay" class="grid-overlay"></div>
+
+        <!-- Drag & Drop / Click Upload Area -->
+        <div id="uploadPrompt" class="upload-prompt">
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--accent-color)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+          </div>
+          <p>上傳或貼上 LINE 數獨截圖</p>
+          <span>支援手機剪貼簿直接貼上</span>
+        </div>
+      </div>
+
+      <!-- Controls Panel -->
+      <div class="glass-card controls-group">
+        <!-- Opacity Slider -->
+        <div class="slider-container">
+          <span>答案不透明度</span>
+          <input
+            type="range"
+            id="opacitySlider"
+            min="0"
+            max="1"
+            step="0.1"
+            value="0.8"
+          />
+        </div>
+
+        <!-- Action Button Grid -->
+        <div class="button-grid">
+          <button id="btnPaste" class="btn btn-primary">
+            貼上最新截圖
+          </button>
+          <button id="btnUpload" class="btn btn-secondary">
+            手動選擇圖片
+          </button>
+          <button id="btnAutoSolve" class="btn btn-primary btn-full">
+            自動全盤解題
+          </button>
+          <button id="btnReset" class="btn btn-secondary btn-full">
+            重設狀態
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Modal: Trial Confirm dialog -->
+    <div id="trialModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-title">試錯提示分析</div>
+        <div class="modal-body">
+          <!-- Content inserted dynamically -->
+        </div>
+        <div style="display: flex; gap: 12px; width: 100%">
+          <button
+            class="btn btn-primary"
+            style="flex: 1; background: var(--green-success)"
+            onclick="submitTrial(true)"
+          >
+            正確
+          </button>
+          <button
+            class="btn btn-primary"
+            style="flex: 1; background: var(--red-error)"
+            onclick="submitTrial(false)"
+          >
+            錯誤
+          </button>
+        </div>
+        <button class="btn btn-primary" style="background: var(--blue-guess);" onclick="inputDirectlyFromTrial()">
+          輸入提示答案
+        </button>
+        <button class="btn btn-secondary" onclick="closeTrialModal()">
+          取消
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal: Manual Number Selector Pad -->
+    <div id="numPadModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-title">編輯數字</div>
+        <div class="num-pad">
+          <button class="num-btn" onclick="inputNum(1)">1</button>
+          <button class="num-btn" onclick="inputNum(2)">2</button>
+          <button class="num-btn" onclick="inputNum(3)">3</button>
+          <button class="num-btn" onclick="inputNum(4)">4</button>
+          <button class="num-btn" onclick="inputNum(5)">5</button>
+          <button class="num-btn" onclick="inputNum(6)">6</button>
+          <button class="num-btn" onclick="inputNum(7)">7</button>
+          <button class="num-btn" onclick="inputNum(8)">8</button>
+          <button class="num-btn" onclick="inputNum(9)">9</button>
+          <button class="num-btn clear" onclick="inputNum(0)">清除格子</button>
+        </div>
+        <button class="btn btn-secondary" onclick="closeNumPad()">關閉</button>
+      </div>
+    </div>
+
+
+
+    <!-- Hidden Input Elements -->
+    <input type="file" id="fileInput" accept="image/*" />
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">提示訊息</div>
+
+    <!-- Helper for download -->
+    <script>
+      function downloadResult() {
+        const canvas = document.getElementById("srcCanvas");
+        if (!canvas.width) {
+          alert("請先上傳數獨圖片進行解析");
+          return;
+        }
+        const link = document.createElement("a");
+        link.download = "sudoku_solution.png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      }
+    </script>
+  </body>
+</html>
