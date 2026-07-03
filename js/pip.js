@@ -57,6 +57,9 @@ class PipController {
     }
 
     try {
+      // Stop any existing stream first
+      await this.stop();
+
       // Capture canvas stream at 1 frame per second (enough for static text overlay)
       this.stream = canvas.captureStream(1);
       this.video.srcObject = this.stream;
