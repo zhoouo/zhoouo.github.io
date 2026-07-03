@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Buttons & Controls
   const btnPaste = document.getElementById("btnPaste");
   const btnUpload = document.getElementById("btnUpload");
+  const btnPip = document.getElementById("btnPip");
   const btnAutoSolve = document.getElementById("btnAutoSolve");
   const btnReset = document.getElementById("btnReset");
   const opacitySlider = document.getElementById("opacitySlider");
@@ -312,6 +313,31 @@ document.addEventListener("DOMContentLoaded", () => {
       decisionEngine.setGrid(processor.recognizeBoard(srcCanvas, boardRect));
       updateStatusBar();
       renderAppCanvas();
+    }
+  });
+
+  // PiP Button
+  btnPip.addEventListener("click", async () => {
+    if (!loadedImage) {
+      showToast("請先上傳數獨圖片");
+      return;
+    }
+    
+    if (!pip.isSupported()) {
+      showToast("您的瀏覽器不支援子母畫面功能");
+      return;
+    }
+    
+    try {
+      await pip.toggle(srcCanvas);
+      if (pip.isActive) {
+        showToast("子母畫面已開啟");
+      } else {
+        showToast("子母畫面已關閉");
+      }
+    } catch (err) {
+      console.error("PiP Toggle Error:", err);
+      showToast("無法開啟子母畫面");
     }
   });
 
