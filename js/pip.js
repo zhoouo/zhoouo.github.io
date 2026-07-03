@@ -8,7 +8,12 @@ class PipController {
     this.video = document.createElement("video");
     this.video.muted = true;
     this.video.playsInline = true;
-    this.video.setAttribute("autoplay", "");
+    // 注意：故意不設定 "autoplay" 屬性。
+    // 如果設定了 autoplay，瀏覽器會在 srcObject 被指定的瞬間，
+    // 自動觸發一次「隱性」的 play()。這個隱性 play() 會跟下面
+    // 我們手動呼叫的 play() 互相競爭，導致其中一個被瀏覽器判定
+    // 「被新的 load 請求中斷」而丟出 AbortError。
+    // 手動全權控制 play() 的呼叫時機，就能避免這個 race condition。
     this.video.setAttribute("playsinline", "");
     
     // Style it off-screen
@@ -22,6 +27,7 @@ class PipController {
     
     this.stream = null;
     this.isActive = false;
+    this._starting = false; // 避免 start() 被重疊呼叫
 
     // Listen to Picture-in-Picture events
     this.video.addEventListener("enterpictureinpicture", () => {
@@ -56,6 +62,11 @@ class PipController {
       throw new Error("您的瀏覽器不支援子母畫面 (PiP) 功能。");
     }
 
+    // 避免快速連續呼叫（例如使用者連點按鈕，或切換分頁時
+    // visibilitychange 又剛好觸發一次）造成多個 start() 互相打架
+    if (this._starting) return;
+    this._starting = true;
+
     try {
       // Exit PiP if already active (without stopping stream yet)
       if (document.pictureInPictureElement === this.video) {
@@ -73,18 +84,53 @@ class PipController {
       this.stream = canvas.captureStream(1);
       this.video.srcObject = this.stream;
 
+      // 等待 video 真正吃到 metadata 後再播放，
+      // 避免在瀏覽器仍在處理 srcObject 指定（load）時就呼叫 play()
+      await new Promise((resolve, reject) => {
+        const onLoaded = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = (e) => {
+          cleanup();
+          reject(e);
+        };
+        const cleanup = () => {
+          this.video.removeEventListener("loadedmetadata", onLoaded);
+          this.video.removeEventListener("error", onError);
+        };
+        // 有些瀏覽器對 MediaStream 可能已經是 ready 狀態，做個保險判斷
+        if (this.video.readyState >= 1) {
+          resolve();
+          return;
+        }
+        this.video.addEventListener("loadedmetadata", onLoaded, { once: true });
+        this.video.addEventListener("error", onError, { once: true });
+      });
+
       // Play the video stream with proper promise handling
-      const playPromise = this.video.play();
-      if (playPromise !== undefined) {
-        await playPromise;
+      try {
+        const playPromise = this.video.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+        }
+      } catch (playErr) {
+        // 拿掉 autoplay 屬性後這裡理論上不會再出現 AbortError，
+        // 但仍保留防呆：AbortError 通常是良性的（例如剛好被
+        // 另一次 load 打斷），不需要整個流程中止
+        if (playErr.name !== "AbortError") {
+          throw playErr;
+        }
       }
       
       // Request PiP window
       await this.video.requestPictureInPicture();
     } catch (err) {
       console.error("PiP Start Error:", err);
-      this.stop();
+      await this.stop();
       throw err;
+    } finally {
+      this._starting = false;
     }
   }
 
