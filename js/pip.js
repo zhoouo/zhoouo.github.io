@@ -28,17 +28,18 @@ class PipController {
     this.stream = null;
     this.isActive = false;
     this._starting = false; // 避免 start() 被重疊呼叫
+    this._stateChangeCallback = null;
 
     // Listen to Picture-in-Picture events
     this.video.addEventListener("enterpictureinpicture", () => {
       this.isActive = true;
-      if (this.onStateChange) this.onStateChange(true);
+      if (this._stateChangeCallback) this._stateChangeCallback(true);
     });
 
     this.video.addEventListener("leavepictureinpicture", () => {
       this.isActive = false;
       this.stop();
-      if (this.onStateChange) this.onStateChange(false);
+      if (this._stateChangeCallback) this._stateChangeCallback(false);
     });
   }
 
@@ -60,6 +61,19 @@ class PipController {
   async start(canvas) {
     if (!this.isSupported()) {
       throw new Error("您的瀏覽器不支援子母畫面 (PiP) 功能。");
+    }
+
+    if (!canvas || canvas.width === 0 || canvas.height === 0) {
+      throw new Error("目前沒有可顯示的畫面內容，請先載入數獨圖片。");
+    }
+
+    if (
+      document.pictureInPictureElement !== this.video &&
+      typeof navigator !== "undefined" &&
+      navigator.userActivation &&
+      !navigator.userActivation.isActive
+    ) {
+      throw new Error("子母畫面必須由按鈕點擊直接觸發，無法在切到背景時自動開啟。");
     }
 
     // 避免快速連續呼叫（例如使用者連點按鈕，或切換分頁時
@@ -128,6 +142,15 @@ class PipController {
     } catch (err) {
       console.error("PiP Start Error:", err);
       await this.stop();
+      if (err && err.name === "NotAllowedError") {
+        throw new Error("瀏覽器阻擋了子母畫面，請用按鈕手動開啟後再試一次。");
+      }
+      if (err && err.name === "NotSupportedError") {
+        throw new Error("目前裝置或瀏覽器不支援子母畫面。");
+      }
+      if (err && err.name === "InvalidStateError") {
+        throw new Error("影片尚未準備完成，請稍候再試一次子母畫面。");
+      }
       throw err;
     } finally {
       this._starting = false;
@@ -153,7 +176,7 @@ class PipController {
       }
       this.stream = null;
       this.isActive = false;
-      if (this.onStateChange) this.onStateChange(false);
+      if (this._stateChangeCallback) this._stateChangeCallback(false);
     }
   }
 
@@ -171,8 +194,8 @@ class PipController {
   /**
    * Register state change callback.
    */
-  onStateChange(callback) {
-    this.onStateChange = callback;
+  setOnStateChange(callback) {
+    this._stateChangeCallback = callback;
   }
 }
 
