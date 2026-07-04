@@ -337,7 +337,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (err) {
       console.error("PiP Toggle Error:", err);
-      showToast("無法開啟子母畫面");
+      showToast(err?.message || "無法開啟子母畫面");
     }
   });
 
@@ -346,16 +346,11 @@ document.addEventListener("DOMContentLoaded", () => {
     renderAppCanvas();
   });
 
-  // Auto Picture-in-Picture on Visibility Change (when user switches tabs/goes home)
+  // PiP 需要由使用者手勢直接觸發，背景切換時自動開啟通常會被瀏覽器阻擋。
+  // 因此這裡只在頁面重新回到前景時同步 UI 狀態，不自動啟動 PiP。
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      if (loadedImage && !pip.isActive) {
-        pip.start(srcCanvas).catch(err => console.log("Auto PiP error:", err));
-      }
-    } else if (document.visibilityState === "visible") {
-      if (pip.isActive) {
-        pip.stop().catch(err => console.log("Stop PiP error:", err));
-      }
+    if (document.visibilityState === "visible") {
+      renderAppCanvas();
     }
   });
 
